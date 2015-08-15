@@ -3,37 +3,30 @@
 
 #define F_CPU 8000000UL
 #define BAUD  19200
-
 #include <util/setbaud.h>
 
 /* setup a stack for buffer */
-#define BUFSIZE 80
-char buf[BUFSIZE];
-char *top = buf;
+#define BUF_IN_SIZE 256
+char buf_in[BUF_IN_SIZE];
+int  buf_in_position;
 
-int push(char c)
+#define BUF_OUT_SIZE 256
+char buf_out[BUF_OUT_SIZE];
+int  buf_out_position;
+int  buf_out_start;
+
+#define ENABLE_TX UCSR0B |= _BV(UDRIE0) 
+#define DISABLE_TX UCSR0B &= ~_BV(UDRIE0)
+#define ENABLE_RX UCSR0B |= _BV(RXCIE0)
+#define DISABLE_RX UCSR0B &= ~_BV(RXCIE0)
+
+char *memcpy(char *dest, const char *src, int n)
 {
-	if((top - buf) < BUFSIZE){
-		*top = c;
-		top ++;
-	}
-	else
-		return -1;
-	return 0;
+	int i;
+	for(i=0; i<n; i++)
+		dest[i] = src[i];
+	return dest;
 }
-
-int pop(char *c)
-{
-	if((top - buf) > 0){
-		top --;
-		*c = *top;
-	}
-	else
-		return -1;
-	return 0;
-}
-	
-
 
 void serial_init()
 {
@@ -56,20 +49,32 @@ ISR(USART0_RX_vect)
 	char error;
 	error = UCSR0A & ( _BV(FE0) | _BV(DOR0) | _BV(UPE0) );
 	c = UDR0;
-	if(!error){
-		if(!push(c))
-			UCSR0B |= _BV(UDRIE0); /* Enable tx */
+	if(error){
+		return;
+	}
+	if(c != '\r' && buf_in_position < BUF_IN_SIZE)
+		buf_in[buf_in_position++] = c;
+	else{
+		buf_in[buf_in_position++] = '\r';
+		buf_in[buf_in_position++] = '\n';
+		memcpy(buf_out, buf_in, buf_in_position);
+		buf_out_position = buf_in_position;
+		buf_out_start = 0;
+		buf_in_position = 0;
+		DISABLE_RX;
+		ENABLE_TX;
 	}
 }
 
 ISR(USART0_UDRE_vect)
 {
-	char c;
-	if(!pop(&c))
-		UDR0 = c;
-
-	/* disable data empty interrupt */
-	UCSR0B &= ~_BV(UDRIE0);
+	if(buf_out_start < buf_out_position)
+		UDR0 = buf_out[buf_out_start++];
+	else{
+		buf_out_start = buf_out_position = 0;
+		DISABLE_TX;
+		ENABLE_RX;
+	}
 }
 
 
