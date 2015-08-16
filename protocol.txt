@@ -1,0 +1,39 @@
+#Packet format
+
+ACK, STX, ETX are ASCII control characters
+##Master:
+
+Type:	STX		MODE	Inum	Onum	DATA	...		ETX
+
+No:		0		1		2-3		3-4		5		...		Inum+6
+
+##Programmer:
+
+##On success
+
+Type:	ACK		STX		DATA	...		ETX
+
+No:		0		1		2		...		Onum+2
+
+##On Fail
+
+Type:	NAK
+
+No:		0
+
+NAK will be sent at any time when the programmer detects an error.
+
+#MODE
+
+## Standard mode (MODE = 0)
+
+Programmer will send ACK after a whole packet have sent in.
+
+## Stream mode (MODE = 1)
+
+The master sends the packet header (including Inum and Onum) and wait for ACK,
+then sends the remaining part of the packet
+
+After that the programmer will return a full packet. 
+
+That's to say, the programmer will send a extra ACK to confirm header.
