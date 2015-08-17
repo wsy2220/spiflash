@@ -5,12 +5,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <termios.h>
+#include <time.h>
 
 #define BAUD B115200
-#define RW_MAX 0x1000000UL
+#define RW_TIMEOUT 5
 #define CMD_RETRY 100
-#define CE_DELAY_MAX 10
-#define BE_DELAY_MAX 5
+#define CE_TIMEOUT 10
+#define BE_TIMEOUT 5
+#define PP_TIMEOUT 1
 
 #define ACK 0x06
 #define NAK 0x15
@@ -85,13 +87,15 @@ int serial_set(int fd, int baud)
  * return number of bytes actually written */
 ssize_t serial_write(int fd, char *buf, size_t count)
 {
-	size_t left = count, attempt = 0;
+	size_t left = count;
 	ssize_t n;
-	while(left > 0 && attempt < (count + RW_MAX)){
+	time_t t0, t1;
+	t0 = t1 = time(NULL);
+	while(left > 0 && (t1 - t0) < RW_TIMEOUT){
 		n = write(fd, buf + count - left, left);
 		if(n > 0)
 			left -= n;
-		attempt++;
+		t1 = time(NULL);
 	}
 	return count - left;
 }
@@ -100,13 +104,15 @@ ssize_t serial_write(int fd, char *buf, size_t count)
  * return bytes actually read */
 ssize_t serial_read(int fd, char *buf, size_t count)
 {
-	size_t left = count, attempt = 0;
+	size_t left = count;
 	ssize_t n;
-	while(left > 0 && attempt < (count + RW_MAX)){
+	time_t t0, t1;
+	t0 = t1 = time(NULL);
+	while(left > 0 && (t1 - t0) < RW_TIMEOUT){
 		n = read(fd, buf + count - left, left);
 		if(n > 0)
 			left -= n;
-		attempt++;
+		t1 = time(NULL);
 	}
 	return count - left;
 }
@@ -282,7 +288,8 @@ int RD(int fd, char *buf, int addr, int size)
 /* chip erase, will check status register to make sure completed.
  * assuming the command is accepted by the chip once sent.
  * since chip erase typically require several seconds, 
- * we can sleep some time to save cpu
+ * we can sleep some time to save cpu.
+ * write-enable bit will be cleared after CE
  * return 0 on success, -1 on failure */
 int CE(int fd)
 {
@@ -294,11 +301,11 @@ int CE(int fd)
 		result = command_rw(fd, &cmd_ce, NULL);
 	if(result)
 		return result;
-	for(i = 0; (status & 0x01) && i < CE_DELAY_MAX; i++){
+	for(i = 0; (status & 0x01) && i < CE_TIMEOUT; i++){
 		sleep(1);
 		RDSR(fd, &status);
 	}
-	if(i == CE_DELAY_MAX)
+	if(status & 0x01)
 		return -1;
 	return 0;
 }
@@ -316,11 +323,18 @@ int PP(int fd, char *data, int addr, int size)
 	pp[0] = 0x02;
 	append_addr(pp, addr);
 	memcpy(pp+4, data, size);
-	command cmd_rd = {4, 0, pp};
+	command cmd_rd = {4 + size, 0, pp};
 	for(i = 0; result && i < CMD_RETRY; i++)
 		result = command_rw(fd, &cmd_rd, NULL);
 	if(result)
 		return -1;
+	time_t t0, t1;
+	t0 = t1 = time(NULL);
+	while((status & 0x01) && (t1 - t0) < PP_TIMEOUT)
+		RDSR(fd, &status);
+	if(status & 0x01)
+		return -1;
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -341,21 +355,29 @@ int main(int argc, char **argv)
 			continue;
 		}
 		printf("WREN OK!\n");
-		if(CE(fd) < 0){
-			printf("CE fail\n");
-			continue;
-		}
-		printf("CE OK!\n");
-		//if(WRDI(fd) < 0) {
-		//	printf("WRDI fail\n");
+		//if(CE(fd) < 0){
+		//	printf("CE fail\n");
 		//	continue;
 		//}
-		//printf("WRDI OK!\n");
-		if(RD(fd, buf, 0x10, 16) < 0){
+		//printf("CE OK!\n");
+		int j;
+		for(j=0; j<16; j++)
+			buf[j] = j;
+		if(PP(fd, buf, 0x10, 16) < 0){
+			printf("PP fail\n");
+			continue;
+		}
+		printf("PP OK!\n");
+		if(WRDI(fd) < 0) {
+			printf("WRDI fail\n");
+			continue;
+		}
+		printf("WRDI OK!\n");
+		if(RD(fd, buf, 0x00, 32) < 0){
 			printf("READ fail\n");
 			continue;
 		}
-		print_array(stdout, buf, 16);
+		print_array(stdout, buf, 32);
 		printf("\n");
 	}
 	close(fd);
