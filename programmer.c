@@ -1,5 +1,6 @@
 #include <avr/io.h>
 #include <ctype.h>
+#include <stdint.h>
 
 #define NULL 0
 
@@ -13,9 +14,9 @@
 #define CS_LOW PORTB &= ~_BV(PB0)
 #define CS_HIGH PORTB |= _BV(PB0)
 /* convert a single byte to 2 ascii codes */
-void byte2hex(char c, char *hex)
+void byte2hex(uint8_t c, uint8_t *hex)
 {
-	unsigned char h = c;
+	uint8_t h = c;
 	h = h >> 4;
 	if(h < 10)
 		*hex = h + 0x30;
@@ -38,7 +39,7 @@ void serial_init()
 	//UBRR0H = UBRRH_VALUE;
 	//UBRR0L = UBRRL_VALUE;
 	UBRR0H = 0;
-	UBRR0L = 103;
+	UBRR0L = 8;
 
 	/* 8N1 frame */
 	UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
@@ -52,9 +53,9 @@ void serial_init()
 
 }
 
-void serial_write(char *c, int n)
+void serial_write(uint8_t *c, uint16_t n)
 {
-	int i;
+	uint16_t i;
 	for(i = 0; i < n; i++) {
 		while( !(UCSR0A & _BV(UDRE0)) )
 			;
@@ -63,19 +64,19 @@ void serial_write(char *c, int n)
 }
 
 /* read n bytes from serial, return bytes actually read */
-int serial_read(char *c, int n, char no_timeout)
+uint16_t serial_read(uint8_t *c, uint16_t n, uint8_t no_timeout)
 {
-	int i ;
-	unsigned long j;
-	char error;
+	uint16_t i;
+	uint32_t j;
+	uint8_t error;
 	for(i = 0; i < n; i++) {
 		/* Wait for new data, if has received some, enable timeout */
 		for(j = 0;
-			!(UCSR0A & _BV(RXC0)) && (no_timeout || j < READ_TIMEOUT);
+			!(UCSR0A & _BV(RXC0)) && ((no_timeout && !i) || j < READ_TIMEOUT) ;
 		    j++)
 			;
 
-		if(!no_timeout && j == READ_TIMEOUT){
+		if((!no_timeout || i) && j == READ_TIMEOUT ){
 			break;
 		}
 		error = UCSR0A & ( _BV(FE0) | _BV(DOR0) | _BV(UPE0) );
@@ -104,12 +105,13 @@ void spi_init()
 
 /* write wn bytes, then read rn bytes back, half-duplex 
  * chcs = 0: do not change cs status*/
-void spi_rw(char *wbuf, int wn, char *rbuf, int rn, char chcs)
+void spi_rw(uint8_t *wbuf, uint16_t wn, 
+		uint8_t *rbuf, uint16_t rn, uint8_t chcs)
 {
 	if(chcs)
 		CS_LOW;
 
-	int i;
+	uint16_t i;
 	for(i = 0; i < wn + rn; i++){
 		if(i < wn)
 			SPDR = *(wbuf + i);
@@ -125,12 +127,12 @@ void spi_rw(char *wbuf, int wn, char *rbuf, int rn, char chcs)
 }
 
 /* write wn bytes, read rn bytes and write to serial port */
-void spi2serial(char *wbuf, int wn, int rn)
+void spi2serial(uint8_t *wbuf, uint16_t wn, uint16_t rn)
 {
 	CS_LOW;
 	spi_rw(wbuf, wn, NULL, 0, 0);
-	int i;
-	char temp;
+	uint16_t i;
+	uint8_t temp;
 	for(i = 0; i < rn; i++){
 		spi_rw(NULL, 0, &temp, 1, 0);
 		serial_write(&temp, 1);
@@ -142,11 +144,11 @@ int main()
 {
 	serial_init();
 	spi_init();
-	char header[HDR_SIZE];
-	char buffer[DAT_SIZE + 2];
-	int n, Inum, Onum;
-	char ACK = 0x06, NAK = 0x15;
-	char SOH = 0x01, STX = 0x02, ETX = 0x03;
+	uint8_t header[HDR_SIZE];
+	uint8_t buffer[DAT_SIZE + 2];
+	uint16_t n, Inum, Onum;
+	uint8_t ACK = 0x06, NAK = 0x15;
+	uint8_t SOH = 0x01, STX = 0x02, ETX = 0x03;
 	for(;;){
 		rx_flush();
 		/* read header, no timeout */
