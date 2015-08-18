@@ -12,7 +12,8 @@
 #define CMD_RETRY 100
 #define CE_TIMEOUT 10
 #define BE_TIMEOUT 5
-#define PP_TIMEOUT 1
+#define PP_TIMEOUT 2
+#define SE_TIMEOUT 2
 
 #define ACK 0x06
 #define NAK 0x15
@@ -337,6 +338,56 @@ int PP(int fd, char *data, int addr, int size)
 	return 0;
 }
 
+/* block erase. assume block size 64k. block_addr = addr & 0xFF0000
+ * check status register to make sure completed
+ * write enable bit is cleared after BE
+ * return 0 on sucess, -1 on failure */
+int BE(int fd, int addr)
+{
+	int i, result = -1;
+	char status = 0x01;   /* assume write in progress */
+	char be[4] ;
+	be[0] = 0x52;
+	append_addr(be, addr);
+	command cmd_be = {4, 0, be};
+	for(i = 0; result && i < CMD_RETRY; i++)
+		result = command_rw(fd, &cmd_be, NULL);
+	if(result)
+		return result;
+	time_t t0, t1;
+	t0 = t1 = time(NULL);
+	while((status & 0x01) && (t1 - t0) < BE_TIMEOUT)
+		RDSR(fd, &status);
+	if(status & 0x01)
+		return -1;
+	return 0;
+}
+
+/* sector erase. assume sector size 4k, sector_addr=addr & 0xFFF
+ * check status register to make sure completed
+ * write enable bit is cleared after SE
+ * return 0 on sucess, -1 on failure */
+int SE(int fd, int addr)
+{
+	int i, result = -1;
+	char status = 0x01;   /* assume write in progress */
+	char se[4] ;
+	se[0] = 0x20;
+	append_addr(se, addr);
+	command cmd_se = {4, 0, se};
+	for(i = 0; result && i < CMD_RETRY; i++)
+		result = command_rw(fd, &cmd_se, NULL);
+	if(result)
+		return result;
+	time_t t0, t1;
+	t0 = t1 = time(NULL);
+	while((status & 0x01) && (t1 - t0) < SE_TIMEOUT)
+		RDSR(fd, &status);
+	if(status & 0x01)
+		return -1;
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	if(argc != 2){
@@ -355,15 +406,20 @@ int main(int argc, char **argv)
 			continue;
 		}
 		printf("WREN OK!\n");
-		//if(CE(fd) < 0){
-		//	printf("CE fail\n");
-		//	continue;
-		//}
-		//printf("CE OK!\n");
+		if(BE(fd,0x100000 ) < 0){
+			printf("BE fail\n");
+			continue;
+		}
+		printf("BE OK!\n");
+		if(WREN(fd) < 0){
+			printf("WREN fail\n");
+			continue;
+		}
+		printf("WREN OK!\n");
 		int j;
-		for(j=0; j<16; j++)
+		for(j=0; j<256; j++)
 			buf[j] = j;
-		if(PP(fd, buf, 0x10, 16) < 0){
+		if(PP(fd, buf, 0x100000, 256) < 0){
 			printf("PP fail\n");
 			continue;
 		}
@@ -373,11 +429,11 @@ int main(int argc, char **argv)
 			continue;
 		}
 		printf("WRDI OK!\n");
-		if(RD(fd, buf, 0x00, 32) < 0){
+		if(RD(fd, buf, 0x100000, 256) < 0){
 			printf("READ fail\n");
 			continue;
 		}
-		print_array(stdout, buf, 32);
+		print_array(stdout, buf, 256);
 		printf("\n");
 	}
 	close(fd);
