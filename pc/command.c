@@ -1,3 +1,4 @@
+/* Basic command implementation. 24-bit address only */
 #include "system.h"
 #include "serial_pc.h"
 #define CMD_RETRY 100

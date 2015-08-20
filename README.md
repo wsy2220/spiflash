@@ -1,6 +1,6 @@
 #spiflash
 This project can turn an AVR MCU into a programmer to read and write 25 series SPI
-rom chips.
+rom chips. Rom chips no more than 16MB(address bits no more than 24) should work fine.
 
 #System configuration
 I only tested this project on ATmega128A MCU and MX25L1606E rom chip.
