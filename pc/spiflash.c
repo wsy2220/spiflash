@@ -104,6 +104,15 @@ int main(int argc, char **argv)
 	int fd = serial_open(port);
 	serial_set(fd, BAUD);
 	char *buf = NULL;
+	
+	char id[3];
+	if(RDID(fd, id) < 0)
+		fprintf(stderr, "Cannot get chip ID, trying to continue.\n");
+	else{
+		printf("Chip ID: ");
+		print_array(stdout, id, 3);
+		printf("\n");
+	}
 
 	if(isce){
 		printf("Performing chip erase...\n");
@@ -200,7 +209,7 @@ int main(int argc, char **argv)
 		buf = malloc(size_new);
 		if(buf == NULL){
 			fprintf(stderr, "Memory allocation failed.\n");
-			exit(1);
+			goto Fail;
 		}
 		block = (size_new & ~0xFFF) >> 12;
 		block_pp = (size_new & ~0xFF) >> 8;
@@ -212,8 +221,8 @@ int main(int argc, char **argv)
 			fprintf(stderr,"failed to read file.\n");
 			goto Fail;
 		}
+		printf("Erasing block...\n");
 		for(i = 0; i < block; i++){
-			printf("Erasing block at %X\n", offset_new + i*0x1000);
 			if(WREN(fd) < 0){
 				fprintf(stderr,"Cannot enable write.\n");
 				goto Fail;
@@ -223,17 +232,18 @@ int main(int argc, char **argv)
 				goto Fail;
 			}
 		}
+		printf("Writing page...\n");
 		for(i = 0; i < block_pp; i++){
 			if(WREN(fd) < 0){
 				fprintf(stderr,"Cannot enable write.\n");
 				goto Fail;
 			}
-			printf("Writing page at %X\n", offset_new + i*0x100);
 			if(PP(fd, buf + i * 0x100, offset_new + i*0x100, 0x100) < 0){
 				fprintf(stderr,"Page write fail at %X\n", offset_new + i*0x100);
 				goto Fail;
 			}
 		}
+		printf("Operation complete.\n");
 	}
 	
 	if(file)

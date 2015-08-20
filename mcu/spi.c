@@ -4,7 +4,7 @@
 void spi_init()
 {
 	/* set output, PB0 as CS# */
-	DDRB |= _BV(PB2) | _BV(PB1) | _BV(PB0);
+	DDR_SPI |= _BV(MOSI) | _BV(SCK) | _BV(SS);
 	SPSR = _BV(SPI2X);
 	SPCR = _BV(MSTR) | _BV(SPE);
 }

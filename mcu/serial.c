@@ -15,9 +15,6 @@ void serial_init()
 	/* 8N1 frame */
 	UCSR0C = _BV(UCSZ00) | _BV(UCSZ01);
 
-	/* setup pull-up resistor on tx when tx disabled */
-	DDRE &= ~_BV(PE1);
-	PORTE |= _BV(PE1);
 
 	/* enable tx */
 	UCSR0B |= _BV(TXEN0) | _BV(RXEN0);

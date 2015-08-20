@@ -7,3 +7,4 @@ int CE(int fd);
 int PP(int fd, char *data, int addr, int size);
 int BE(int fd, int addr);
 int SE(int fd, int addr);
+void print_array(FILE *stream, char *data, int n);
