@@ -10,12 +10,11 @@ To change baud rate, see Porting section.
 
 Here is the wiring between MCU and flash:
 
-| AVR MCU       | SPI Flash     | 
-|: ------------ |:-------------:| 
-| MOSI          | SI            | 
-| MISO          | SO            | 
-| SCK           | SCK           | 
-| SS            | CS            | 
+ AVR MCU        SPI Flash      
+ MOSI     --->  SI             
+ MISO     --->  SO             
+ SCK      --->  SCK            
+ SS       --->  CS             
 
 WP and HOLD on chip are held high.
 
